@@ -1,1 +1,10 @@
-{"compilerOptions":{"strict":false,"jsx":"preserve"}}
+{
+  "compilerOptions": {
+    "strict": false,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  }
+}
