@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
 export default function Login() {
@@ -9,7 +9,6 @@ export default function Login() {
   const [mode, setMode] = useState('login')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const supabase = createClientComponentClient()
   const router = useRouter()
 
   async function handleSubmit(e) {
