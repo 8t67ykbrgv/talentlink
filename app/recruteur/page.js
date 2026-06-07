@@ -78,6 +78,10 @@ export default function RecruteurDashboard() {
         </div>
         <div className="flex items-center gap-4">
           <Link href="/talent-pool" className="text-sm text-gray-500 hover:text-gray-700">Talent Pool</Link>
+          <Link href="/recruteur/live" className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+  <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block"></span>
+  Live
+</Link>
           <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">Accueil</Link>
         </div>
       </nav>
