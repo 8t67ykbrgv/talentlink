@@ -7,25 +7,57 @@ export default function TalentPool() {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({ category: 'all', minScore: 0 })
+  const [sending, setSending] = useState(null)
+  const [sent, setSent] = useState({})
+  const [offers, setOffers] = useState([])
+  const [selectedOffer, setSelectedOffer] = useState('')
 
-  useEffect(() => { fetchCandidates() }, [])
+  useEffect(() => { fetchCandidates(); fetchOffers() }, [])
+
+  async function fetchOffers() {
+    const { data } = await supabase.from('job_offers').select('id, title').eq('status', 'active')
+    setOffers(data || [])
+    if (data?.length > 0) setSelectedOffer(data[0].id)
+  }
 
   async function fetchCandidates() {
     const { data } = await supabase
       .from('scores')
-      .select(`
-        *,
-        test_sessions(
-          invitations(
-            users(full_name, email),
-            job_offers(title)
-          )
-        )
-      `)
+      .select(`*, test_sessions(invitations(users(full_name, email), job_offers(title)))`)
       .eq('admitted', true)
       .order('score_global', { ascending: false })
     setCandidates(data || [])
     setLoading(false)
+  }
+
+  async function inviteCandidate(candidate) {
+    setSending(candidate.id)
+    const user = candidate.test_sessions?.invitations?.users
+    const offer = offers.find(o => o.id === selectedOffer)
+    if (!user || !offer) { setSending(null); return }
+
+    const token = Math.random().toString(36).substring(2) + Date.now().toString(36)
+
+    await supabase.from('invitations').insert([{
+      offer_id: selectedOffer,
+      candidate_id: user.id,
+      token,
+      status: 'pending'
+    }])
+
+    const res = await fetch('/api/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        candidatEmail: user.email,
+        candidatName: user.full_name,
+        offreTitle: offer.title,
+        invitationToken: token
+      })
+    })
+
+    if (res.ok) setSent({...sent, [candidate.id]: true})
+    setSending(null)
   }
 
   const filtered = candidates.filter(c => {
@@ -53,11 +85,11 @@ export default function TalentPool() {
       <div className="max-w-4xl mx-auto p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Talent Pool</h1>
-          <p className="text-gray-500 mt-1">{filtered.length} candidat{filtered.length > 1 ? 's' : ''} certifié{filtered.length > 1 ? 's' : ''} disponible{filtered.length > 1 ? 's' : ''}</p>
+          <p className="text-gray-500 mt-1">{filtered.length} candidat{filtered.length > 1 ? 's' : ''} certifié{filtered.length > 1 ? 's' : ''}</p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-6 flex gap-4 flex-wrap items-center">
-          <div className="flex gap-2">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-6 flex gap-4 flex-wrap items-center justify-between">
+          <div className="flex gap-2 flex-wrap">
             {[['all','Tous'],['tech','Technique'],['soft','Soft skills'],['lang','Langue']].map(([val, label]) => (
               <button key={val} onClick={() => setFilters({...filters, category: val})}
                 className={`text-sm px-4 py-2 rounded-xl font-medium transition ${filters.category === val ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
@@ -65,13 +97,23 @@ export default function TalentPool() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-3 ml-auto">
+          <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">Score min : {filters.minScore}%</span>
             <input type="range" min="0" max="100" step="10" value={filters.minScore}
               onChange={e => setFilters({...filters, minScore: parseInt(e.target.value)})}
               className="w-32" />
           </div>
         </div>
+
+        {offers.length > 0 && (
+          <div className="bg-blue-50 rounded-2xl border border-blue-100 p-4 mb-6 flex items-center gap-4">
+            <span className="text-sm text-blue-700 font-medium">Inviter pour :</span>
+            <select value={selectedOffer} onChange={e => setSelectedOffer(e.target.value)}
+              className="flex-1 border border-blue-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+              {offers.map(o => <option key={o.id} value={o.id}>{o.title}</option>)}
+            </select>
+          </div>
+        )}
 
         {loading ? (
           <div className="text-center py-12 text-gray-400">Chargement...</div>
@@ -116,11 +158,11 @@ export default function TalentPool() {
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-gray-100 flex gap-3">
-                    <button className="text-sm bg-blue-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-blue-700 transition">
-                      Contacter
-                    </button>
-                    <button className="text-sm bg-gray-100 text-gray-700 px-4 py-2 rounded-xl font-medium hover:bg-gray-200 transition">
-                      Voir le certificat
+                    <button
+                      onClick={() => inviteCandidate(c)}
+                      disabled={sending === c.id || sent[c.id]}
+                      className={`text-sm px-4 py-2 rounded-xl font-medium transition ${sent[c.id] ? 'bg-green-50 text-green-700' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-50`}>
+                      {sent[c.id] ? '✓ Invitation envoyée' : sending === c.id ? 'Envoi...' : 'Contacter par email'}
                     </button>
                   </div>
                 </div>
