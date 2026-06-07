@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useParams, useRouter } from 'next/navigation'
 
@@ -12,8 +12,41 @@ export default function PasserTest() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
+  const [questionTime, setQuestionTime] = useState(90)
+  const [tabSwitches, setTabSwitches] = useState(0)
+  const [warning, setWarning] = useState('')
+  const [pasteCount, setPasteCount] = useState(0)
 
   useEffect(() => { fetchTest() }, [id])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        setTabSwitches(t => {
+          const newCount = t + 1
+          if (newCount >= 3) {
+            setWarning('⚠️ Trop de changements d\'onglet détectés — votre session sera signalée au recruteur.')
+          } else {
+            setWarning(`⚠️ Changement d'onglet détecté (${newCount}/3) — évitez de quitter le test.`)
+          }
+          return newCount
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
+
+  useEffect(() => {
+    const handlePaste = (e) => {
+      if (e.target.tagName === 'TEXTAREA') {
+        setPasteCount(p => p + 1)
+        setWarning('⚠️ Copier-coller détecté — les réponses copiées sont signalées.')
+      }
+    }
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [])
 
   useEffect(() => {
     if (timeLeft === null) return
@@ -21,6 +54,21 @@ export default function PasserTest() {
     const timer = setTimeout(() => setTimeLeft(t => t - 1), 1000)
     return () => clearTimeout(timer)
   }, [timeLeft])
+
+  useEffect(() => {
+    if (questions.length === 0) return
+    setQuestionTime(90)
+    const timer = setInterval(() => {
+      setQuestionTime(t => {
+        if (t <= 1) {
+          if (current < questions.length - 1) setCurrent(c => c + 1)
+          return 90
+        }
+        return t - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [current, questions.length])
 
   async function fetchTest() {
     const { data } = await supabase.from('tests').select('*, questions(*)').eq('id', id).single()
@@ -63,7 +111,8 @@ export default function PasserTest() {
     const langScore = countLang > 0 ? Math.round(scoreLang / countLang * 100) : 0
     const metierScore = countMetier > 0 ? Math.round(scoreMetier / countMetier * 100) : 0
 
-    router.push(`/resultats?global=${globalScore}&tech=${techScore}&soft=${softScore}&lang=${langScore}&metier=${metierScore}`)
+    const flagged = tabSwitches >= 3 || pasteCount >= 3
+    router.push(`/resultats?global=${globalScore}&tech=${techScore}&soft=${softScore}&lang=${langScore}&metier=${metierScore}&flagged=${flagged}&tabs=${tabSwitches}`)
   }
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">Chargement du test...</div>
@@ -73,6 +122,7 @@ export default function PasserTest() {
   const minutes = Math.floor(timeLeft / 60)
   const seconds = timeLeft % 60
   const progress = ((current + 1) / questions.length) * 100
+  const questionProgress = (questionTime / 90) * 100
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -81,8 +131,11 @@ export default function PasserTest() {
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><span className="text-white text-sm font-bold">TL</span></div>
           <span className="font-semibold text-gray-900">Test en cours</span>
         </div>
-        <div className={`flex items-center gap-2 text-sm font-medium ${timeLeft < 300 ? 'text-red-500' : 'text-gray-600'}`}>
-          ⏱ {minutes}:{seconds < 10 ? '0' : ''}{seconds}
+        <div className="flex items-center gap-4">
+          {tabSwitches > 0 && <span className="text-xs bg-orange-50 text-orange-600 px-2 py-1 rounded-full">⚠️ {tabSwitches} changement{tabSwitches > 1 ? 's' : ''} d'onglet</span>}
+          <div className={`flex items-center gap-2 text-sm font-medium ${timeLeft < 300 ? 'text-red-500' : 'text-gray-600'}`}>
+            ⏱ {minutes}:{seconds < 10 ? '0' : ''}{seconds}
+          </div>
         </div>
       </nav>
 
@@ -90,15 +143,30 @@ export default function PasserTest() {
         <div className="h-1 bg-blue-600 transition-all" style={{ width: `${progress}%` }}></div>
       </div>
 
+      {warning && (
+        <div className="bg-orange-50 border-b border-orange-200 px-6 py-3 text-sm text-orange-700 text-center">
+          {warning}
+        </div>
+      )}
+
       <div className="max-w-2xl mx-auto p-8">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <span className="text-sm text-gray-500">Question {current + 1} / {questions.length}</span>
-          <span className={`text-xs px-3 py-1 rounded-full font-medium ${
-            q.category === 'tech' ? 'bg-blue-50 text-blue-700' :
-            q.category === 'soft' ? 'bg-purple-50 text-purple-700' :
-            q.category === 'lang' ? 'bg-green-50 text-green-700' :
-            'bg-orange-50 text-orange-700'
-          }`}>{q.category}</span>
+          <div className="flex items-center gap-3">
+            <span className={`text-sm font-medium ${questionTime < 20 ? 'text-red-500' : 'text-gray-500'}`}>
+              {questionTime}s
+            </span>
+            <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+              q.category === 'tech' ? 'bg-blue-50 text-blue-700' :
+              q.category === 'soft' ? 'bg-purple-50 text-purple-700' :
+              q.category === 'lang' ? 'bg-green-50 text-green-700' :
+              'bg-orange-50 text-orange-700'
+            }`}>{q.category}</span>
+          </div>
+        </div>
+
+        <div className="h-1 bg-gray-200 rounded-full mb-6">
+          <div className={`h-1 rounded-full transition-all ${questionTime < 20 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${questionProgress}%` }}></div>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
