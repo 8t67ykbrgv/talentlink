@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-
+import RadarChart from '@/app/components/RadarChart'
 export default function TalentPool() {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
@@ -141,7 +141,12 @@ export default function TalentPool() {
                       </div>
                       <div className="text-sm text-gray-500 mt-0.5">Évalué pour : {offer?.title || 'Poste non spécifié'}</div>
                     </div>
-                    <div className="text-2xl font-bold text-gray-900">{c.score_global}%</div>
+                    <div className="text-2xl font-bold text-gray-900">{c.score_global}%</div><RadarChart scores={{
+  'Technique': c.score_tech,
+  'Soft skills': c.score_soft,
+  'Langue': c.score_lang,
+  'Métier': c.score_metier
+}} size={160} />
                   </div>
 
                   <div className="grid grid-cols-4 gap-3 mt-4 pt-4 border-t border-gray-100">
